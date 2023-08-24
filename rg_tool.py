@@ -167,7 +167,10 @@ def build_image(apps, device_type):
         subprocess.run("idf.py bootloader", stdout=subprocess.DEVNULL, shell=True, check=True, cwd=cwd)
         with open(os.path.join(cwd, "build", "bootloader", "bootloader.bin"), "rb") as f:
             bootloader_bin = f.read()
-        image_data[0x1000:0x1000+len(bootloader_bin)] = bootloader_bin
+        if device_type == "mariunder-one":
+            image_data[0x0000:len(bootloader_bin)] = bootloader_bin
+        else:
+            image_data[0x1000:0x1000+len(bootloader_bin)] = bootloader_bin
     except:
         exit("Error building bootloader")
 
