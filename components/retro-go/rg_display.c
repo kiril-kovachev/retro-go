@@ -384,7 +384,7 @@ static void lcd_init(void)
     ILI9341_CMD(0x29, {0x80});
 #elif RG_SCREEN_TYPE == 7
 	ILI9341_CMD(0xC5, {0x1A}); //VCOM
-	ILI9341_CMD(0x36, {0x20}); //Display Rotation
+	ILI9341_CMD(0x36, {0xA0}); //Display Rotation
 	ILI9341_CMD(0xB2, {0x05, 0x05, 0x00, 0x33, 0x33});  //Porch Setting
 	ILI9341_CMD(0xB7, {0x05});  //Gate Control //12.2v   -10.43v
 	ILI9341_CMD(0xBB, {0x3F});  //VCOM

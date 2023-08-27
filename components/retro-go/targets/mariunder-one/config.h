@@ -17,7 +17,7 @@
 #define RG_SCREEN_DRIVER            0   // 0 = ILI9341
 #define RG_SCREEN_HOST              SPI2_HOST
 #define RG_SCREEN_SPEED             SPI_MASTER_FREQ_80M
-#define RG_SCREEN_TYPE              4   // 4 = ESPLAY-ST7789V2
+#define RG_SCREEN_TYPE              7   // ST7789V2
 #define RG_SCREEN_WIDTH             320
 #define RG_SCREEN_HEIGHT            240
 #define RG_SCREEN_ROTATE            0
@@ -27,16 +27,14 @@
 #define RG_SCREEN_MARGIN_RIGHT      0
 
 // Input
-#define RG_GAMEPAD_DRIVER           1   // 1 = ODROID-GO, 2 = Serial, 3 = I2C
-#define RG_GAMEPAD_HAS_MENU_BTN     1
-#define RG_GAMEPAD_HAS_OPTION_BTN   1
+#define RG_GAMEPAD_DRIVER           10   // 1 = ODROID-GO, 2 = Serial, 3 = I2C, 10 = GPIO no pullup
+#define RG_GAMEPAD_HAS_MENU_BTN     0
+#define RG_GAMEPAD_HAS_OPTION_BTN   0
 // Note: Depending on the driver, the button map can be a bitmask, an index, or a GPIO.
 // Refer to rg_input.h to see all available RG_KEY_*
 #define RG_GAMEPAD_MAP {\
     {RG_KEY_SELECT, RG_GPIO_GAMEPAD_SELECT},\
     {RG_KEY_START,  RG_GPIO_GAMEPAD_START},\
-    {RG_KEY_MENU,   RG_GPIO_GAMEPAD_MENU},\
-    {RG_KEY_OPTION, RG_GPIO_GAMEPAD_OPTION},\
     {RG_KEY_A,      RG_GPIO_GAMEPAD_A},\
     {RG_KEY_B,      RG_GPIO_GAMEPAD_B},\
 }
@@ -58,10 +56,11 @@
 #define RG_GPIO_GAMEPAD_Y           ADC1_CHANNEL_4
 #define RG_GPIO_GAMEPAD_SELECT      GPIO_NUM_17
 #define RG_GPIO_GAMEPAD_START       GPIO_NUM_35
-#define RG_GPIO_GAMEPAD_A           GPIO_NUM_37
-#define RG_GPIO_GAMEPAD_B           GPIO_NUM_36
-#define RG_GPIO_GAMEPAD_MENU        GPIO_NUM_15
-#define RG_GPIO_GAMEPAD_OPTION      GPIO_NUM_16
+//#define RG_GPIO_GAMEPAD_A           GPIO_NUM_37
+#define RG_GPIO_GAMEPAD_A           GPIO_NUM_15
+#define RG_GPIO_GAMEPAD_B           GPIO_NUM_16
+#define RG_GPIO_GAMEPAD_MENU        GPIO_NUM_NC
+#define RG_GPIO_GAMEPAD_OPTION      GPIO_NUM_NC
 
 // SPI Display
 #define RG_GPIO_LCD_MISO            GPIO_NUM_13
@@ -70,7 +69,7 @@
 #define RG_GPIO_LCD_CS              GPIO_NUM_10
 #define RG_GPIO_LCD_DC              GPIO_NUM_21
 #define RG_GPIO_LCD_BCKL            GPIO_NUM_14
-#define RG_GPIO_LCD_RST             GPIO_NUM_NC
+//#define RG_GPIO_LCD_RST             GPIO_NUM_NC
 
 // SPI SD Card
 #define RG_GPIO_SDSPI_MISO          GPIO_NUM_13

@@ -11,7 +11,7 @@
 #include <driver/gpio.h>
 #endif
 
-#if RG_GAMEPAD_DRIVER == 1 || defined(RG_BATTERY_ADC_CHANNEL)
+#if RG_GAMEPAD_DRIVER == 1 || RG_GAMEPAD_DRIVER == 10 || defined(RG_BATTERY_ADC_CHANNEL)
 #include <esp_adc_cal.h>
 #include <driver/adc.h>
 #endif
@@ -52,7 +52,7 @@ static inline uint32_t gamepad_read(void)
 {
     uint32_t state = 0;
 
-#if RG_GAMEPAD_DRIVER == 1    // GPIO
+#if RG_GAMEPAD_DRIVER == 1 || RG_GAMEPAD_DRIVER == 10    // GPIO
 
     int joyX = adc1_get_raw(RG_GPIO_GAMEPAD_X);
     int joyY = adc1_get_raw(RG_GPIO_GAMEPAD_Y);
@@ -269,6 +269,26 @@ void rg_input_init(void)
 
     const char *driver = "SDL2";
 
+#elif RG_GAMEPAD_DRIVER == 10 // GPIO Mariunder-one
+
+    const char *driver = "GPIO";
+
+    adc1_config_width(ADC_WIDTH_MAX - 1);
+    adc1_config_channel_atten(RG_GPIO_GAMEPAD_X, ADC_ATTEN_DB_11);
+    adc1_config_channel_atten(RG_GPIO_GAMEPAD_Y, ADC_ATTEN_DB_11);
+
+    gpio_set_direction(RG_GPIO_GAMEPAD_MENU, GPIO_MODE_INPUT);
+    //gpio_set_pull_mode(RG_GPIO_GAMEPAD_MENU, GPIO_PULLUP_ONLY);
+    gpio_set_direction(RG_GPIO_GAMEPAD_OPTION, GPIO_MODE_INPUT);
+    // gpio_set_pull_mode(RG_GPIO_GAMEPAD_OPTION, GPIO_PULLUP_ONLY);
+    gpio_set_direction(RG_GPIO_GAMEPAD_SELECT, GPIO_MODE_INPUT);
+    //gpio_set_pull_mode(RG_GPIO_GAMEPAD_SELECT, GPIO_PULLUP_ONLY);
+    gpio_set_direction(RG_GPIO_GAMEPAD_START, GPIO_MODE_INPUT);
+    // gpio_set_pull_mode(RG_GPIO_GAMEPAD_START, GPIO_PULLUP_ONLY);
+    gpio_set_direction(RG_GPIO_GAMEPAD_A, GPIO_MODE_INPUT);
+    //gpio_set_pull_mode(RG_GPIO_GAMEPAD_A, GPIO_PULLUP_ONLY);
+    gpio_set_direction(RG_GPIO_GAMEPAD_B, GPIO_MODE_INPUT);
+    //gpio_set_pull_mode(RG_GPIO_GAMEPAD_B, GPIO_PULLUP_ONLY);
 #else
 
     #error "No gamepad driver selected"
@@ -356,4 +376,5 @@ const char *rg_input_get_key_name(rg_key_t key)
     case RG_KEY_NONE: return "None";
     default: return "Unknown";
     }
+    printf("Key pressed: %d", key);
 }
