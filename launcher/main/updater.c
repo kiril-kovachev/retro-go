@@ -59,7 +59,6 @@ static int download_file(const char *url, const char *filename)
         fwrite(buffer, 1, len, fp);
         sprintf(buffer, "Received %d / %d", received, req->content_length);
         rg_gui_draw_dialog(buffer, NULL, 0);
-        rg_system_tick(0);
     }
 
     if (req->content_length == received)
@@ -134,7 +133,7 @@ static rg_gui_event_t view_release_cb(rg_gui_option_t *option, rg_gui_event_t ev
             if (ret != 0)
                 rg_gui_alert("Download failed!", "...");
             else if (rg_gui_confirm("Download complete!", "Reboot to flash?", true))
-                rg_system_switch_app(RG_APP_FACTORY, RG_APP_FACTORY, NULL, 0);
+                rg_system_switch_app(RG_APP_FACTORY, NULL, NULL, 0);
         }
         gui_redraw();
     }
@@ -145,6 +144,11 @@ static rg_gui_event_t view_release_cb(rg_gui_option_t *option, rg_gui_event_t ev
 void updater_show_dialog(void)
 {
     cJSON *releases_json = fetch_json(GITHUB_RELEASES_URL);
+    if (!releases_json)
+    {
+        rg_gui_alert("Connection failed", "Make sure that you are online!");
+        return;
+    }
     size_t releases_count = RG_MIN(cJSON_GetArraySize(releases_json), 20);
 
     release_t *releases = calloc(releases_count, sizeof(release_t));

@@ -25,7 +25,6 @@
 
 /* internal CPU context */
 static nes6502_t cpu;
-static mem_t *mem;
 
 // #define NES6502_JUMPTABLE
 #define NES6502_FASTMEM
@@ -1061,9 +1060,9 @@ static mem_t *mem;
 
 #ifdef NES6502_FASTMEM
 
-#define fast_readbyte(a) ({uint16 _a = (a); mem->pages[_a >> MEM_PAGESHIFT][_a];})
-#define fast_readword(a) ({uint16 _a = (a); ((_a & MEM_PAGEMASK) != MEM_PAGEMASK) ? PAGE_READWORD(mem->pages[_a >> MEM_PAGESHIFT], _a) : mem_getword(_a);})
-#define writebyte(a, v)  {uint16 _a = (a), _v = (v); if (_a < 0x2000) mem->ram[_a & 0x7FF] = _v; else mem_putbyte(_a, _v);}
+#define fast_readbyte(a) ({uint16 _a = (a); cpu.pages[_a >> MEM_PAGESHIFT][_a];})
+#define fast_readword(a) ({uint16 _a = (a); ((_a & MEM_PAGEMASK) != MEM_PAGEMASK) ? PAGE_READWORD(cpu.pages[_a >> MEM_PAGESHIFT], _a) : mem_getword(_a);})
+#define writebyte(a, v)  {uint16 _a = (a), _v = (v); if (_a < 0x2000) cpu.pages[0][_a & 0x7FF] = _v; else mem_putbyte(_a, _v);}
 
 #else /* !NES6502_FASTMEM */
 
@@ -1102,17 +1101,15 @@ static mem_t *mem;
 
 
 /* set the current context */
-void nes6502_setcontext(nes6502_t *context)
+void nes6502_setcontext(const nes6502_t *src)
 {
-   ASSERT(context);
-   cpu = *context;
+   MESSAGE_ERROR("%s: Not implemented!\n", __func__);
 }
 
 /* get the current context */
 void nes6502_getcontext(nes6502_t *context)
 {
-   ASSERT(context);
-   *context = cpu;
+   MESSAGE_ERROR("%s: Not implemented!\n", __func__);
 }
 
 /* get number of elapsed cycles */
@@ -1288,8 +1285,8 @@ IRAM_ATTR int nes6502_execute(int cycles)
       OPCODE(0x57, SRE(6, ZP_IND_X, ZP_WRITEBYTE, baddr));          /* SRE $nn,X */
       OPCODE(0x58, CLI());                                          /* CLI */
       OPCODE(0x59, EOR(4, ABS_IND_Y_BYTE_READ));                    /* EOR $nnnn,Y */
-      OPCODE(0x5B, SRE(7, ABS_IND_Y, writebyte, addr));             /* SRE $nnnn,Y */
       OPCODE(0x5A, NOP());                                          /* NOP */
+      OPCODE(0x5B, SRE(7, ABS_IND_Y, writebyte, addr));             /* SRE $nnnn,Y */
       OPCODE(0x5C, TOP());                                          /* NOP $nnnn,X */
       OPCODE(0x5D, EOR(4, ABS_IND_X_BYTE_READ));                    /* EOR $nnnn,X */
       OPCODE(0x5E, LSR(7, ABS_IND_X, writebyte, addr));             /* LSR $nnnn,X */
@@ -1441,8 +1438,8 @@ IRAM_ATTR int nes6502_execute(int cycles)
       OPCODE(0xE7, ISB(5, ZERO_PAGE, ZP_WRITEBYTE, baddr));         /* ISB $nn */
       OPCODE(0xE8, INX());                                          /* INX */
       OPCODE(0xE9, SBC(2, IMMEDIATE_BYTE));                         /* SBC #$nn */
-      OPCODE(0xEB, SBC(2, IMMEDIATE_BYTE));                         /* USBC #$nn */
       OPCODE(0xEA, NOP());                                          /* NOP */
+      OPCODE(0xEB, SBC(2, IMMEDIATE_BYTE));                         /* USBC #$nn */
       OPCODE(0xEC, CPX(4, ABSOLUTE_BYTE));                          /* CPX $nnnn */
       OPCODE(0xED, SBC(4, ABSOLUTE_BYTE));                          /* SBC $nnnn */
       OPCODE(0xEE, INC(6, ABSOLUTE, writebyte, addr));              /* INC $nnnn */
@@ -1524,6 +1521,8 @@ void nes6502_burn(int cycles)
 /* Issue a CPU Reset */
 void nes6502_reset(void)
 {
+   cpu.zp    = cpu.pages[0] + 0x000; // Page 0
+   cpu.stack = cpu.pages[0] + 0x100; // Page 1
    cpu.p_reg = Z_FLAG | R_FLAG | I_FLAG;  /* Reserved bit always 1 */
    cpu.pc_reg = readword(RESET_VECTOR);   /* Fetch reset vector */
    cpu.int_pending = false;               /* No pending interrupts */
@@ -1532,14 +1531,10 @@ void nes6502_reset(void)
 }
 
 /* Create a nes6502 object */
-nes6502_t *nes6502_init(mem_t *_mem)
+nes6502_t *nes6502_init(uint8 **memmap)
 {
    memset(&cpu, 0, sizeof(nes6502_t));
-
-   cpu.zp    = _mem->ram + 0x000; // Page 0
-   cpu.stack = _mem->ram + 0x100; // Page 1
-
-   mem = _mem; // For FASTMEM
+   cpu.pages = memmap;
 
    return &cpu;
 }

@@ -1,5 +1,3 @@
-// REF: https://wiki.odroid.com/odroid_go/odroid_go
-
 // Target definition
 #define RG_TARGET_NAME             "QTPY ESP32"
 
@@ -17,7 +15,6 @@
 #define RG_SCREEN_DRIVER            0   // 0 = ILI9341
 #define RG_SCREEN_HOST              SPI2_HOST
 #define RG_SCREEN_SPEED             SPI_MASTER_FREQ_40M
-#define RG_SCREEN_TYPE              2
 #define RG_SCREEN_WIDTH             240
 #define RG_SCREEN_HEIGHT            240
 #define RG_SCREEN_ROTATE            0
@@ -25,6 +22,10 @@
 #define RG_SCREEN_MARGIN_BOTTOM     -80
 #define RG_SCREEN_MARGIN_LEFT       0
 #define RG_SCREEN_MARGIN_RIGHT      0
+#define RG_SCREEN_INIT()          \
+    ILI9341_CMD(0x36, 0xC0); \
+    ILI9341_CMD(0x21); /* Invert colors */
+
 
 // Input
 #define RG_GAMEPAD_DRIVER           4   // 1 = ODROID-GO, 2 = Serial, 3 = I2C, 4 = AW9523, 5 = ESPLAY-S3, 6 = SDL2
@@ -46,7 +47,7 @@
 }
 
 // Battery
-// #define RG_BATTERY_ADC_CHANNEL      ADC1_CHANNEL_0
+#define RG_BATTERY_DRIVER           0
 #define RG_BATTERY_CALC_PERCENT(raw) (99)
 #define RG_BATTERY_CALC_VOLTAGE(raw) (0)
 
@@ -70,6 +71,7 @@
 #define RG_GPIO_LCD_CS              GPIO_NUM_27
 #define RG_GPIO_LCD_DC              GPIO_NUM_7
 // #define RG_GPIO_LCD_BCKL            GPIO_NUM_5  // not used!
+// #define RG_GPIO_LCD_RST           GPIO_NUM_NC
 
 // SPI SD Card
 #define RG_GPIO_SDSPI_MISO          GPIO_NUM_12

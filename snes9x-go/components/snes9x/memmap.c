@@ -36,8 +36,6 @@ static bool bs_name(uint8_t*);
 
 void S9xDeinterleaveType2(bool reset);
 
-extern char* rom_filename;
-
 void S9xDeinterleaveType1(int32_t TotalFileSize, uint8_t* base)
 {
    int32_t i;
@@ -251,14 +249,20 @@ bool S9xInitMemory(void)
    Memory.VRAM  = (uint8_t*) calloc(VRAM_SIZE, 1);
    Memory.ROM   = (uint8_t*) calloc(MAX_ROM_SIZE + 0x200, 1);
    Memory.FillRAM = (uint8_t*) calloc(0x8000, 1);
+   Memory.ROM_Size = MAX_ROM_SIZE + 0x200;
 
+   Memory.Map = (uint8_t**)calloc(MEMMAP_NUM_BLOCKS, sizeof(uint8_t*));
+   Memory.MapInfo = (SMapInfo*)calloc(MEMMAP_NUM_BLOCKS, sizeof(SMapInfo));
+
+   IPPU.ScreenColors = (uint16_t *)calloc(256 * 9, sizeof(uint16_t));
+   IPPU.DirectColors = IPPU.ScreenColors + 256;
    IPPU.TileCache = (uint8_t*) calloc(MAX_2BIT_TILES, 128);
    IPPU.TileCached = (uint8_t*) calloc(MAX_2BIT_TILES, 1);
 
    bytes0x2000 = (uint8_t *)calloc(0x2000, 1);
 
-   if (!Memory.RAM || !Memory.SRAM || !Memory.VRAM || !Memory.ROM
-      || !IPPU.TileCache || !IPPU.TileCached || !bytes0x2000)
+   if (!Memory.RAM || !Memory.SRAM || !Memory.VRAM || !Memory.ROM || !Memory.Map || !Memory.MapInfo
+      || !IPPU.ScreenColors || !IPPU.TileCache || !IPPU.TileCached || !bytes0x2000)
    {
       S9xDeinitMemory();
       return false;
@@ -295,6 +299,22 @@ void S9xDeinitMemory(void)
       free(Memory.FillRAM);
       Memory.FillRAM = NULL;
    }
+   if (Memory.Map)
+   {
+      free(Memory.Map);
+      Memory.Map = NULL;
+   }
+   if (Memory.MapInfo)
+   {
+      free(Memory.MapInfo);
+      Memory.MapInfo = NULL;
+   }
+
+   if (IPPU.ScreenColors)
+   {
+      free(IPPU.ScreenColors);
+      IPPU.ScreenColors = NULL;
+   }
 
    if (IPPU.TileCached)
    {
@@ -327,12 +347,12 @@ void S9xDeinitMemory(void)
 bool LoadROM(const char* filename)
 {
    int32_t hi_score, lo_score;
-   int32_t TotalFileSize = 0;
+   size_t TotalFileSize = 0;
    bool Interleaved = false;
    bool Tales = false;
    FILE *fp;
 
-   printf("Loading ROM: '%s'\n", filename ?: "(null)");
+   printf("Loading ROM: '%s'\n", filename ? filename : "(null)");
 
    Memory.ExtendedFormat = NOPE;
 
@@ -346,13 +366,14 @@ again:
    if (filename == NULL)
    {
       printf("Using Memory.ROM as is.\n");
+      TotalFileSize = Memory.ROM_Size;
    }
    else if ((fp = fopen(filename, "rb")))
    {
       fseek(fp, 0, SEEK_END);
-      Memory.ROM_Size = ftell(fp);
+      TotalFileSize = ftell(fp);
       fseek(fp, 0, SEEK_SET);
-      fread(Memory.ROM, MIN(Memory.ROM_Size, MAX_ROM_SIZE), 1, fp);
+      fread(Memory.ROM, Memory.ROM_Size, 1, fp);
       fclose(fp);
    }
    else
@@ -360,12 +381,11 @@ again:
       printf("Failed to open %s\n", filename);
       return false;
    }
-   TotalFileSize = Memory.ROM_Size;
 
-   if (TotalFileSize > MAX_ROM_SIZE)
+   if (TotalFileSize > Memory.ROM_Size)
    {
-      printf("WARNING: ROM TOO BIG (%d)!\n", TotalFileSize);
-      TotalFileSize = MAX_ROM_SIZE;
+      printf("WARNING: ROM TOO BIG (%u)!\n", (unsigned)TotalFileSize);
+      TotalFileSize = Memory.ROM_Size;
       return false; // comment to try to run it anyway
    }
    else if (TotalFileSize < 1024)
@@ -846,7 +866,10 @@ void InitROM(bool Interleaved)
       }
    }
 
-   memset(Memory.BlockType, 0, MEMMAP_NUM_BLOCKS);
+   for (size_t i = 0; i < MEMMAP_NUM_BLOCKS; i++)
+   {
+      Memory.MapInfo[i].Type = 0;
+   }
 
    memset(Memory.ROMId, 0, 5);
    memset(Memory.CompanyId, 0, 3);
@@ -1101,19 +1124,22 @@ void FixROMSpeed(void)
 
    for (c = 0x800; c < 0x1000; c++)
       if (c & 0x8 || c & 0x400)
-         Memory.MemorySpeed [c] = (uint8_t) CPU.FastROMSpeed;
+         Memory.MapInfo[c].Speed = (uint8_t) CPU.FastROMSpeed;
 }
 
 void ResetSpeedMap(void)
 {
    int32_t i;
-   memset(Memory.MemorySpeed, SLOW_ONE_CYCLE, 0x1000);
+   for (i = 0; i < MEMMAP_NUM_BLOCKS; i++)
+   {
+      Memory.MapInfo[i].Speed = SLOW_ONE_CYCLE;
+   }
    for (i = 0; i < 0x400; i += 0x10)
    {
-      Memory.MemorySpeed[i + 2] = Memory.MemorySpeed[0x800 + i + 2] = ONE_CYCLE;
-      Memory.MemorySpeed[i + 3] = Memory.MemorySpeed[0x800 + i + 3] = ONE_CYCLE;
-      Memory.MemorySpeed[i + 4] = Memory.MemorySpeed[0x800 + i + 4] = ONE_CYCLE;
-      Memory.MemorySpeed[i + 5] = Memory.MemorySpeed[0x800 + i + 5] = ONE_CYCLE;
+      Memory.MapInfo[i + 2].Speed = Memory.MapInfo[0x800 + i + 2].Speed = ONE_CYCLE;
+      Memory.MapInfo[i + 3].Speed = Memory.MapInfo[0x800 + i + 3].Speed = ONE_CYCLE;
+      Memory.MapInfo[i + 4].Speed = Memory.MapInfo[0x800 + i + 4].Speed = ONE_CYCLE;
+      Memory.MapInfo[i + 5].Speed = Memory.MapInfo[0x800 + i + 5].Speed = ONE_CYCLE;
    }
    FixROMSpeed();
 }
@@ -1128,7 +1154,7 @@ void map_space(uint32_t bank_s, uint32_t bank_e, uint32_t addr_s, uint32_t addr_
       {
          p = (c << 4) | (i >> 12);
          Memory.Map[p] = data;
-         Memory.BlockType[p] = MAP_TYPE_RAM;
+         Memory.MapInfo[p].Type = MAP_TYPE_RAM;
       }
    }
 }
@@ -1147,7 +1173,7 @@ void map_index(uint32_t bank_s, uint32_t bank_e, uint32_t addr_s, uint32_t addr_
       {
          p = (c << 4) | (i >> 12);
          Memory.Map[p] = (uint8_t*) index;
-         Memory.BlockType[p] = type;
+         Memory.MapInfo[p].Type = type;
       }
    }
 }
@@ -1168,7 +1194,7 @@ void MapRAM(void)
          for (i = 0; i < 8; i++)
          {
             Memory.Map [(c << 4) + 0xF00 + i] = Memory.Map [(c << 4) + 0x700 + i] = MAP_LOROM_SRAM_OR_NONE;
-            Memory.BlockType [(c << 4) + 0xF00 + i] = Memory.BlockType [(c << 4) + 0x700 + i] = MAP_TYPE_RAM;
+            Memory.MapInfo[(c << 4) + 0xF00 + i].Type = Memory.MapInfo[(c << 4) + 0x700 + i].Type = MAP_TYPE_RAM;
          }
       }
       if(Memory.CalculatedSize <= 0x200000)
@@ -1179,7 +1205,7 @@ void MapRAM(void)
             for(i = 8; i < 16; i++)
             {
                Memory.Map [(c << 4) + 0x700 + i] = MAP_LOROM_SRAM_OR_NONE;
-               Memory.BlockType [(c << 4) + 0x700 + i] = MAP_TYPE_RAM;
+               Memory.MapInfo[(c << 4) + 0x700 + i].Type = MAP_TYPE_RAM;
             }
          }
       }
@@ -1192,7 +1218,7 @@ void MapRAM(void)
          for (i = 0; i < 8; i++)
          {
             Memory.Map [(c << 4) + 0x700 + i] = MAP_LOROM_SRAM_OR_NONE;
-            Memory.BlockType [(c << 4) + 0x700 + i] = MAP_TYPE_RAM;
+            Memory.MapInfo[(c << 4) + 0x700 + i].Type = MAP_TYPE_RAM;
          }
       }
    }
@@ -1201,8 +1227,8 @@ void MapRAM(void)
    {
       Memory.Map [c + 0x7e0] = Memory.RAM;
       Memory.Map [c + 0x7f0] = Memory.RAM + 0x10000;
-      Memory.BlockType[c + 0x7e0] = MAP_TYPE_RAM;
-      Memory.BlockType[c + 0x7f0] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x7e0].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x7f0].Type = MAP_TYPE_RAM;
    }
    WriteProtectROM();
 }
@@ -1216,8 +1242,8 @@ void MapExtraRAM(void)
    {
       Memory.Map [c + 0x7e0] = Memory.RAM;
       Memory.Map [c + 0x7f0] = Memory.RAM + 0x10000;
-      Memory.BlockType [c + 0x7e0] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 0x7f0] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x7e0].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x7f0].Type = MAP_TYPE_RAM;
    }
 
    /* Banks 70->73, S-RAM */
@@ -1228,10 +1254,10 @@ void MapExtraRAM(void)
       Memory.Map [c + 0x720] = Memory.SRAM + 0x10000;
       Memory.Map [c + 0x730] = Memory.SRAM + 0x18000;
 
-      Memory.BlockType [c + 0x700] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 0x710] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 0x720] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 0x730] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x700].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x710].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x720].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x730].Type = MAP_TYPE_RAM;
    }
 }
 
@@ -1245,8 +1271,8 @@ void LoROMMap(void)
    {
       Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
       Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
-      Memory.BlockType [c + 0] = Memory.BlockType [c + 0x800] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 1] = Memory.BlockType [c + 0x801] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 2] = Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 3] = Memory.Map [c + 0x803] = (uint8_t*) MAP_PPU;
@@ -1271,7 +1297,7 @@ void LoROMMap(void)
       for (i = c + 8; i < c + 16; i++)
       {
          Memory.Map [i] = Memory.Map [i + 0x800] = &Memory.ROM [(c << 11) % Memory.CalculatedSize] - 0x8000;
-         Memory.BlockType [i] = Memory.BlockType [i + 0x800] = MAP_TYPE_ROM;
+         Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1285,7 +1311,7 @@ void LoROMMap(void)
          Memory.Map [i + 0x400] = Memory.Map [i + 0xc00] = &Memory.ROM [((c << 11) + 0x200000) % Memory.CalculatedSize] - 0x8000;
 
       for (i = c; i < c + 16; i++)
-         Memory.BlockType [i + 0x400] = Memory.BlockType [i + 0xc00] = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x400].Type = Memory.MapInfo[i + 0xC00].Type = MAP_TYPE_ROM;
    }
 
    if (Settings.DSP)
@@ -1345,8 +1371,8 @@ void SetaDSPMap(void)
    {
       Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
       Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
-      Memory.BlockType [c + 0] = Memory.BlockType [c + 0x800] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 1] = Memory.BlockType [c + 0x801] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 2] = Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 3] = Memory.Map [c + 0x803] = (uint8_t*) MAP_PPU;
@@ -1358,7 +1384,7 @@ void SetaDSPMap(void)
       for (i = c + 8; i < c + 16; i++)
       {
          Memory.Map [i] = Memory.Map [i + 0x800] = &Memory.ROM [(c << 11) % Memory.CalculatedSize] - 0x8000;
-         Memory.BlockType [i] = Memory.BlockType [i + 0x800] = MAP_TYPE_ROM;
+         Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1370,7 +1396,7 @@ void SetaDSPMap(void)
 
       /* only upper half is ROM */
       for (i = c + 8; i < c + 16; i++)
-         Memory.BlockType [i + 0x400] = Memory.BlockType [i + 0xc00] = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x400].Type = Memory.MapInfo[i + 0xC00].Type = MAP_TYPE_ROM;
    }
 
    memset(Memory.SRAM, 0, 0x1000);
@@ -1380,7 +1406,7 @@ void SetaDSPMap(void)
       {
          /* Where does the SETA chip access, anyway? Please confirm this. */
          Memory.Map[c + 0x80 + i] = (uint8_t*)MAP_SETA_DSP;
-         Memory.BlockType [c + 0x80 + i] = MAP_TYPE_RAM;
+         Memory.MapInfo[c + 0x80 + i].Type = MAP_TYPE_RAM;
       }
    }
 
@@ -1397,9 +1423,9 @@ void HiROMMap(void)
    for (c = 0; c < 0x400; c += 16)
    {
       Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
-      Memory.BlockType [c + 0] = Memory.BlockType [c + 0x800] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
       Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
-      Memory.BlockType [c + 1] = Memory.BlockType [c + 0x801] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 2] = Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 3] = Memory.Map [c + 0x803] = (uint8_t*) MAP_PPU;
@@ -1411,7 +1437,7 @@ void HiROMMap(void)
       for (i = c + 8; i < c + 16; i++)
       {
          Memory.Map [i] = Memory.Map [i + 0x800] = &Memory.ROM [(c << 12) % Memory.CalculatedSize];
-         Memory.BlockType [i] = Memory.BlockType [i + 0x800] = MAP_TYPE_ROM;
+         Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1422,10 +1448,10 @@ void HiROMMap(void)
       Memory.Map [0x307 + (c << 4)] = MAP_HIROM_SRAM_OR_NONE;
       Memory.Map [0xb06 + (c << 4)] = MAP_HIROM_SRAM_OR_NONE;
       Memory.Map [0xb07 + (c << 4)] = MAP_HIROM_SRAM_OR_NONE;
-      Memory.BlockType [0x306 + (c << 4)] = MAP_TYPE_RAM;
-      Memory.BlockType [0x307 + (c << 4)] = MAP_TYPE_RAM;
-      Memory.BlockType [0xb06 + (c << 4)] = MAP_TYPE_RAM;
-      Memory.BlockType [0xb07 + (c << 4)] = MAP_TYPE_RAM;
+      Memory.MapInfo[0x306 + (c << 4)].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[0x307 + (c << 4)].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[0xb06 + (c << 4)].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[0xb07 + (c << 4)].Type = MAP_TYPE_RAM;
    }
 
    /* Banks 40->7f and c0->ff */
@@ -1434,7 +1460,7 @@ void HiROMMap(void)
       for (i = c; i < c + 16; i++)
       {
          Memory.Map [i + 0x400] = Memory.Map [i + 0xc00] = &Memory.ROM [(c << 12) % Memory.CalculatedSize];
-         Memory.BlockType [i + 0x400] = Memory.BlockType [i + 0xc00] = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x400].Type = Memory.MapInfo[i + 0xC00].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1467,8 +1493,8 @@ void TalesROMMap(bool Interleaved)
    {
       Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
       Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
-      Memory.BlockType [c + 0] = Memory.BlockType [c + 0x800] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 1] = Memory.BlockType [c + 0x801] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 2] = Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 3] = Memory.Map [c + 0x803] = (uint8_t*) MAP_PPU;
@@ -1481,7 +1507,7 @@ void TalesROMMap(bool Interleaved)
       {
          Memory.Map [c + 6] = Memory.Map [c + 0x806] = MAP_HIROM_SRAM_OR_NONE;
          Memory.Map [c + 7] = Memory.Map [c + 0x807] = MAP_HIROM_SRAM_OR_NONE;
-         Memory.BlockType [6 + c] = Memory.BlockType [7 + c] = Memory.BlockType [0x806 + c] = Memory.BlockType [0x807 + c] = MAP_TYPE_RAM;
+         Memory.MapInfo[6 + c].Type = Memory.MapInfo[7 + c].Type = Memory.MapInfo[0x806 + c].Type = Memory.MapInfo[0x807 + c].Type = MAP_TYPE_RAM;
       }
       else
       {
@@ -1492,8 +1518,8 @@ void TalesROMMap(bool Interleaved)
       {
          Memory.Map [i] = &Memory.ROM [((c << 12) % (Memory.CalculatedSize - 0x400000)) + OFFSET0];
          Memory.Map [i + 0x800] = &Memory.ROM [((c << 12) % 0x400000) + OFFSET2];
-         Memory.BlockType [i] = MAP_TYPE_ROM;
-         Memory.BlockType [i + 0x800] = MAP_TYPE_ROM;
+         Memory.MapInfo[i].Type = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1506,10 +1532,10 @@ void TalesROMMap(bool Interleaved)
          Memory.Map [i + 0x408] = &Memory.ROM [((c << 12) % (Memory.CalculatedSize - 0x400000)) + OFFSET1];
          Memory.Map [i + 0xc00] = &Memory.ROM [((c << 12) % 0x400000) + OFFSET2];
          Memory.Map [i + 0xc08] = &Memory.ROM [((c << 12) % 0x400000) + OFFSET2];
-         Memory.BlockType [i + 0x400] = MAP_TYPE_ROM;
-         Memory.BlockType [i + 0x408] = MAP_TYPE_ROM;
-         Memory.BlockType [i + 0xc00] = MAP_TYPE_ROM;
-         Memory.BlockType [i + 0xc08] = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x400].Type = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x408].Type = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0xC00].Type = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0xC08].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1542,8 +1568,8 @@ void AlphaROMMap(void)
    {
       Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
       Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
-      Memory.BlockType [c + 0] = Memory.BlockType [c + 0x800] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 1] = Memory.BlockType [c + 0x801] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 2] = Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 3] = Memory.Map [c + 0x803] = (uint8_t*) MAP_PPU;
@@ -1555,7 +1581,7 @@ void AlphaROMMap(void)
       for (i = c + 8; i < c + 16; i++)
       {
          Memory.Map [i] = Memory.Map [i + 0x800] = &Memory.ROM [(c << 11) % Memory.CalculatedSize] - 0x8000;
-         Memory.BlockType [i] = MAP_TYPE_ROM;
+         Memory.MapInfo[i].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1567,7 +1593,7 @@ void AlphaROMMap(void)
       {
          Memory.Map [i + 0x400] = &Memory.ROM [(c << 12) % Memory.CalculatedSize];
          Memory.Map [i + 0xc00] = &Memory.ROM [(c << 12) % Memory.CalculatedSize];
-         Memory.BlockType [i + 0x400] = Memory.BlockType [i + 0xc00] = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x400].Type = Memory.MapInfo[i + 0xC00].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1585,8 +1611,8 @@ void LoROM24MBSMap(void)
    {
       Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
       Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
-      Memory.BlockType [c + 0] = Memory.BlockType [c + 0x800] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 1] = Memory.BlockType [c + 0x801] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 2] = Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 3] = Memory.Map [c + 0x803] = (uint8_t*) MAP_PPU;
@@ -1598,7 +1624,7 @@ void LoROM24MBSMap(void)
       for (i = c + 8; i < c + 16; i++)
       {
          Memory.Map [i] = Memory.Map [i + 0x800] = &Memory.ROM [(c << 11) % Memory.CalculatedSize] - 0x8000;
-         Memory.BlockType [i] = Memory.BlockType [i + 0x800] = MAP_TYPE_ROM;
+         Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1607,8 +1633,8 @@ void LoROM24MBSMap(void)
    {
       Memory.Map [c + 0x800] = Memory.RAM;
       Memory.Map [c + 0x801] = Memory.RAM;
-      Memory.BlockType [c + 0x800] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 0x801] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 0x803] = (uint8_t*) MAP_PPU;
@@ -1620,7 +1646,7 @@ void LoROM24MBSMap(void)
       for (i = c + 8; i < c + 16; i++)
       {
          Memory.Map [i + 0x800] = &Memory.ROM [((c << 11) + 0x200000) % Memory.CalculatedSize] - 0x8000;
-         Memory.BlockType [i + 0x800] = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1634,7 +1660,7 @@ void LoROM24MBSMap(void)
          Memory.Map [i + 0x400] = Memory.Map [i + 0xc00] = &Memory.ROM [((c << 11) + 0x200000) % Memory.CalculatedSize] - 0x8000;
 
       for (i = c; i < c + 16; i++)
-         Memory.BlockType [i + 0x400] = Memory.BlockType [i + 0xc00] = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x400].Type = Memory.MapInfo[i + 0xC00].Type = MAP_TYPE_ROM;
    }
 
    MapExtraRAM();
@@ -1651,8 +1677,8 @@ void SufamiTurboLoROMMap(void)
    {
       Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
       Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
-      Memory.BlockType [c + 0] = Memory.BlockType [c + 0x800] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 1] = Memory.BlockType [c + 0x801] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 2] = Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 3] = Memory.Map [c + 0x803] = (uint8_t*) MAP_PPU;
@@ -1663,7 +1689,7 @@ void SufamiTurboLoROMMap(void)
       for (i = c + 8; i < c + 16; i++)
       {
          Memory.Map [i] = Memory.Map [i + 0x800] = &Memory.ROM [c << 11] - 0x8000;
-         Memory.BlockType [i] = Memory.BlockType [i + 0x800] = MAP_TYPE_ROM;
+         Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1677,7 +1703,7 @@ void SufamiTurboLoROMMap(void)
          Memory.Map [i + 0x400] = Memory.Map [i + 0xc00] = &Memory.ROM [((c << 11) + 0x200000) % Memory.CalculatedSize] - 0x8000;
 
       for (i = c; i < c + 16; i++)
-         Memory.BlockType [i + 0x400] = Memory.BlockType [i + 0xc00] = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x400].Type = Memory.MapInfo[i + 0xC00].Type = MAP_TYPE_ROM;
    }
 
    if (Settings.DSP1Master)
@@ -1685,7 +1711,7 @@ void SufamiTurboLoROMMap(void)
       for (c = 0; c < 0x100; c++)
       {
          Memory.Map [c + 0xe00] = (uint8_t*) MAP_DSP;
-         Memory.BlockType [c + 0xe00] = MAP_TYPE_ROM;
+         Memory.MapInfo[c + 0xe00].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1694,15 +1720,15 @@ void SufamiTurboLoROMMap(void)
    {
       Memory.Map [c + 0x7e0] = Memory.RAM;
       Memory.Map [c + 0x7f0] = Memory.RAM + 0x10000;
-      Memory.BlockType [c + 0x7e0] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 0x7f0] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x7e0].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x7f0].Type = MAP_TYPE_RAM;
    }
 
    /* Banks 60->67, S-RAM */
    for (c = 0; c < 0x80; c++)
    {
       Memory.Map [c + 0x600] = MAP_LOROM_SRAM_OR_NONE;
-      Memory.BlockType [c + 0x600] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x600].Type = MAP_TYPE_RAM;
    }
 
    WriteProtectROM();
@@ -1718,8 +1744,8 @@ void SRAM512KLoROMMap(void)
    {
       Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
       Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
-      Memory.BlockType [c + 0] = Memory.BlockType [c + 0x800] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 1] = Memory.BlockType [c + 0x801] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 2] = Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 3] = Memory.Map [c + 0x803] = (uint8_t*) MAP_PPU;
@@ -1730,7 +1756,7 @@ void SRAM512KLoROMMap(void)
       for (i = c + 8; i < c + 16; i++)
       {
          Memory.Map [i] = Memory.Map [i + 0x800] = &Memory.ROM [(c << 11) % Memory.CalculatedSize] - 0x8000;
-         Memory.BlockType [i] = Memory.BlockType [i + 0x800] = MAP_TYPE_ROM;
+         Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1744,7 +1770,7 @@ void SRAM512KLoROMMap(void)
          Memory.Map [i + 0x400] = Memory.Map [i + 0xc00] = &Memory.ROM [((c << 11) + 0x200000) % Memory.CalculatedSize] - 0x8000;
 
       for (i = c; i < c + 16; i++)
-         Memory.BlockType [i + 0x400] = Memory.BlockType [i + 0xc00] = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x400].Type = Memory.MapInfo[i + 0xC00].Type = MAP_TYPE_ROM;
    }
 
    MapExtraRAM();
@@ -1761,8 +1787,8 @@ void SRAM1024KLoROMMap(void)
    {
       Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
       Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
-      Memory.BlockType [c + 0] = Memory.BlockType [c + 0x800] = Memory.BlockType [c + 0x400] = Memory.BlockType [c + 0xc00] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 1] = Memory.BlockType [c + 0x801] = Memory.BlockType [c + 0x401] = Memory.BlockType [c + 0xc01] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = Memory.MapInfo[c + 0x400].Type = Memory.MapInfo[c + 0xc00].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = Memory.MapInfo[c + 0x401].Type = Memory.MapInfo[c + 0xc01].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 2] = Memory.Map [c + 0x802] = Memory.Map [c + 0x402] = Memory.Map [c + 0xc02] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 3] = Memory.Map [c + 0x803] = Memory.Map [c + 0x403] = Memory.Map [c + 0xc03] = (uint8_t*) MAP_PPU;
@@ -1773,7 +1799,7 @@ void SRAM1024KLoROMMap(void)
       for (i = c + 8; i < c + 16; i++)
       {
          Memory.Map [i] = Memory.Map [i + 0x800] = Memory.Map [i + 0x400] = Memory.Map [i + 0xc00] = &Memory.ROM [(c << 11) % Memory.CalculatedSize] - 0x8000;
-         Memory.BlockType [i] = Memory.BlockType [i + 0x800] = Memory.BlockType [i + 0x400] = Memory.BlockType [i + 0xc00] = MAP_TYPE_ROM;
+         Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = Memory.MapInfo[i + 0x400].Type = Memory.MapInfo[i + 0xC00].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1791,8 +1817,8 @@ void CapcomProtectLoROMMap(void)
    {
       Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.Map [c + 0x400] = Memory.Map [c + 0xc00] = Memory.RAM;
       Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.Map [c + 0x401] = Memory.Map [c + 0xc01] = Memory.RAM;
-      Memory.BlockType [c + 0] = Memory.BlockType [c + 0x800] = Memory.BlockType [c + 0x400] = Memory.BlockType [c + 0xc00] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 1] = Memory.BlockType [c + 0x801] = Memory.BlockType [c + 0x401] = Memory.BlockType [c + 0xc01] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = Memory.MapInfo[c + 0x400].Type = Memory.MapInfo[c + 0xc00].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = Memory.MapInfo[c + 0x401].Type = Memory.MapInfo[c + 0xc01].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 2] = Memory.Map [c + 0x802] = Memory.Map [c + 0x402] = Memory.Map [c + 0xc02] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 3] = Memory.Map [c + 0x803] = Memory.Map [c + 0x403] = Memory.Map [c + 0xc03] = (uint8_t*) MAP_PPU;
@@ -1803,7 +1829,7 @@ void CapcomProtectLoROMMap(void)
       for (i = c + 8; i < c + 16; i++)
       {
          Memory.Map [i] = Memory.Map [i + 0x800] = Memory.Map [i + 0x400] = Memory.Map [i + 0xc00] = &Memory.ROM [(c << 11) % Memory.CalculatedSize] - 0x8000;
-         Memory.BlockType [i] = Memory.BlockType [i + 0x800] = Memory.BlockType [i + 0x400] = Memory.BlockType [i + 0xc00] = MAP_TYPE_ROM;
+         Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = Memory.MapInfo[i + 0x400].Type = Memory.MapInfo[i + 0xC00].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1830,8 +1856,8 @@ void JumboLoROMMap(bool Interleaved)
    {
       Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
       Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
-      Memory.BlockType [c + 0] = Memory.BlockType [c + 0x800] = MAP_TYPE_RAM;
-      Memory.BlockType [c + 1] = Memory.BlockType [c + 0x801] = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
 
       Memory.Map [c + 2] = Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
       Memory.Map [c + 3] = Memory.Map [c + 0x803] = (uint8_t*) MAP_PPU;
@@ -1857,7 +1883,7 @@ void JumboLoROMMap(bool Interleaved)
       {
          Memory.Map [i] = &Memory.ROM [((c << 11) % (Memory.CalculatedSize - 0x400000)) + OFFSET0] - 0x8000;
          Memory.Map [i + 0x800] = &Memory.ROM [((c << 11) % (0x400000)) + OFFSET2] - 0x8000;
-         Memory.BlockType [i + 0x800] = Memory.BlockType [i] = MAP_TYPE_ROM;
+         Memory.MapInfo[i + 0x800].Type = Memory.MapInfo[i].Type = MAP_TYPE_ROM;
       }
    }
 
@@ -1869,7 +1895,7 @@ void JumboLoROMMap(bool Interleaved)
          for (i = c + 8; i < c + 16; i++)
          {
             Memory.Map [i + 0x800] = (uint8_t*) MAP_DSP;
-            Memory.BlockType [i] = Memory.BlockType [i + 0x800] = MAP_TYPE_ROM;
+            Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
          }
       }
    }
@@ -1891,7 +1917,7 @@ void JumboLoROMMap(bool Interleaved)
       }
 
       for (i = c; i < c + 16; i++)
-         Memory.BlockType [i] = Memory.BlockType [i + 0x800] = MAP_TYPE_ROM;
+         Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
    }
 
    /* ROM type has to be 64 Mbit header! */
@@ -1956,7 +1982,7 @@ void ApplyROMFixes(void)
       for (c = 0; c < 0xE0; c++)
       {
          Memory.Map[c + 0x700] = MAP_LOROM_SRAM_OR_NONE;
-         Memory.BlockType[c + 0x700] = MAP_TYPE_RAM;
+         Memory.MapInfo[c + 0x700].Type = MAP_TYPE_RAM;
       }
       WriteProtectROM();
    }
@@ -1964,7 +1990,7 @@ void ApplyROMFixes(void)
    if (strncmp(Memory.ROMName, "WAR 2410", 8) == 0)
    {
       Memory.Map [0x005] = (uint8_t*) Memory.RAM;
-      Memory.BlockType [0x005] = MAP_TYPE_RAM;
+      Memory.MapInfo[0x005].Type = MAP_TYPE_RAM;
    }
 
    /* NMI hacks */

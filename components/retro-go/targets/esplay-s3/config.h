@@ -1,5 +1,3 @@
-// REF: https://wiki.odroid.com/odroid_go/odroid_go
-
 // Target definition
 #define RG_TARGET_NAME             "ESPLAY-S3"
 
@@ -17,7 +15,6 @@
 #define RG_SCREEN_DRIVER            0   // 0 = ILI9341
 #define RG_SCREEN_HOST              SPI2_HOST
 #define RG_SCREEN_SPEED             SPI_MASTER_FREQ_80M
-#define RG_SCREEN_TYPE              4   // 4 = ESPLAY-ST7789V2
 #define RG_SCREEN_WIDTH             320
 #define RG_SCREEN_HEIGHT            240
 #define RG_SCREEN_ROTATE            0
@@ -25,13 +22,27 @@
 #define RG_SCREEN_MARGIN_BOTTOM     0
 #define RG_SCREEN_MARGIN_LEFT       0
 #define RG_SCREEN_MARGIN_RIGHT      0
+#define RG_SCREEN_INIT()                                                                                   \
+    ILI9341_CMD(0xC5, 0x1A);                         /* VCOM */                                            \
+    ILI9341_CMD(0x36, 0x60);                         /* Display Rotation */                                \
+    ILI9341_CMD(0xB2, 0x05, 0x05, 0x00, 0x33, 0x33); /* Porch Setting */                                   \
+    ILI9341_CMD(0xB7, 0x05);                         /* Gate Control //12.2v   -10.43v */                  \
+    ILI9341_CMD(0xBB, 0x3F);                         /* VCOM */                                            \
+    ILI9341_CMD(0xC0, 0x2c);                         /* Power control */                                   \
+    ILI9341_CMD(0xC2, 0x01);                         /* VDV and VRH Command Enable */                      \
+    ILI9341_CMD(0xC3, 0x0F);                         /* VRH Set 4.3+( vcom+vcom offset+vdv) */             \
+    ILI9341_CMD(0xC4, 0xBE);                         /* VDV Set 0v */                                      \
+    ILI9341_CMD(0xC6, 0X01);                         /* Frame Rate Control in Normal Mode 111Hz */         \
+    ILI9341_CMD(0xD0, 0xA4, 0xA1);                   /* Power Control 1 */                                 \
+    ILI9341_CMD(0xE8, 0x03);                         /* Power Control 1 */                                 \
+    ILI9341_CMD(0xE9, 0x09, 0x09, 0x08);             /* Equalize time control */                           \
+    ILI9341_CMD(0xE0, 0xD0, 0x05, 0x09, 0x09, 0x08, 0x14, 0x28, 0x33, 0x3F, 0x07, 0x13, 0x14, 0x28, 0x30); \
+    ILI9341_CMD(0xE1, 0xD0, 0x05, 0x09, 0x09, 0x08, 0x03, 0x24, 0x32, 0x32, 0x3B, 0x14, 0x13, 0x28, 0x2F, 0x1F);
 
 // Input
 #define RG_GAMEPAD_DRIVER           3   // 1 = ODROID-GO, 2 = Serial, 3 = I2C
 #define RG_GAMEPAD_HAS_MENU_BTN     1
 #define RG_GAMEPAD_HAS_OPTION_BTN   1
-// Note: Depending on the driver, the button map can be a bitmask, an index, or a GPIO.
-// Refer to rg_input.h to see all available RG_KEY_*
 #define RG_GAMEPAD_MAP {\
     {RG_KEY_UP,     (1<<2)},\
     {RG_KEY_RIGHT,  (1<<5)},\
@@ -42,8 +53,15 @@
     {RG_KEY_A,      (1<<6)},\
     {RG_KEY_B,      (1<<7)},\
 }
+#define RG_GAMEPAD_GPIO_MAP {\
+    {RG_KEY_L,      GPIO_NUM_40, GPIO_PULLUP_ONLY, 0},\
+    {RG_KEY_R,      GPIO_NUM_41, GPIO_PULLUP_ONLY, 0},\
+    {RG_KEY_MENU,   GPIO_NUM_42, GPIO_PULLUP_ONLY, 0},\
+    {RG_KEY_OPTION, GPIO_NUM_41, GPIO_PULLUP_ONLY, 0},\
+}
 
 // Battery
+#define RG_BATTERY_DRIVER           1
 #define RG_BATTERY_ADC_CHANNEL      ADC1_CHANNEL_3
 #define RG_BATTERY_CALC_PERCENT(raw) (((raw) * 2.f - 3500.f) / (4200.f - 3500.f) * 100.f)
 #define RG_BATTERY_CALC_VOLTAGE(raw) ((raw) * 2.f * 0.001f)
@@ -54,12 +72,6 @@
 // I2C BUS
 #define RG_GPIO_I2C_SDA             GPIO_NUM_10
 #define RG_GPIO_I2C_SCL             GPIO_NUM_11
-
-// Built-in gamepad
-#define RG_GPIO_GAMEPAD_L           GPIO_NUM_40
-#define RG_GPIO_GAMEPAD_R           GPIO_NUM_41
-#define RG_GPIO_GAMEPAD_MENU        GPIO_NUM_42
-#define RG_GPIO_GAMEPAD_OPTION      GPIO_NUM_41
 
 // SPI Display
 #define RG_GPIO_LCD_MISO            GPIO_NUM_NC

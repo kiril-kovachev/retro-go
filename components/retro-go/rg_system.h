@@ -4,6 +4,7 @@
 extern "C" {
 #endif
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -11,14 +12,14 @@ extern "C" {
 
 #include "config.h"
 
-#ifndef RG_TARGET_SDL2
+#ifdef ESP_PLATFORM
 #include <esp_idf_version.h>
+#include <esp_heap_caps.h>
 #include <esp_attr.h>
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4, 3, 0)
 #define SPI_DMA_CH_AUTO 1
 #endif
 #else
-#define EXT_RAM_ATTR
 #define IRAM_ATTR
 #define RTC_NOINIT_ATTR
 #endif
@@ -64,6 +65,20 @@ enum
     // bits 8-31: unused...
 };
 
+// RG_TASK_PRIORITY_1 is the same as the main task's. Anything
+// higher will run even if main task never yields
+typedef enum
+{
+    RG_TASK_PRIORITY_1 = 1,
+    RG_TASK_PRIORITY_2,
+    RG_TASK_PRIORITY_3,
+    RG_TASK_PRIORITY_4,
+    RG_TASK_PRIORITY_5,
+    RG_TASK_PRIORITY_6,
+    RG_TASK_PRIORITY_7,
+    RG_TASK_PRIORITY_8,
+} rg_task_priority_t;
+
 enum
 {
     RG_LOG_PRINT = 0,
@@ -91,21 +106,21 @@ typedef enum
 
 typedef enum
 {
-    RG_EVENT_TYPE_SYSTEM  = 0xF1000000,
-    RG_EVENT_TYPE_POWER   = 0xF2000000,
-    RG_EVENT_TYPE_NETWORK = 0xF3000000,
-    RG_EVENT_TYPE_NETPLAY = 0xF4000000,
-    RG_EVENT_TYPE_MASK    = 0xFF000000,
-} rg_event_type_t;
+    /* Types and masks */
+    RG_EVENT_TYPE_SYSTEM  = 0xF10000,
+    RG_EVENT_TYPE_POWER   = 0xF20000,
+    RG_EVENT_TYPE_NETWORK = 0xF30000,
+    RG_EVENT_TYPE_NETPLAY = 0xF40000,
+    RG_EVENT_TYPE_MASK    = 0xFF0000,
 
-enum
-{
+    /* Events */
     RG_EVENT_UNRESPONSIVE = RG_EVENT_TYPE_SYSTEM | 1,
     RG_EVENT_LOWMEMORY    = RG_EVENT_TYPE_SYSTEM | 2,
     RG_EVENT_REDRAW       = RG_EVENT_TYPE_SYSTEM | 3,
+    RG_EVENT_SPEEDUP      = RG_EVENT_TYPE_SYSTEM | 4,
     RG_EVENT_SHUTDOWN     = RG_EVENT_TYPE_POWER | 1,
     RG_EVENT_SLEEP        = RG_EVENT_TYPE_POWER | 2,
-};
+} rg_event_t;
 
 typedef bool (*rg_state_handler_t)(const char *filename);
 typedef bool (*rg_reset_handler_t)(bool hard);
@@ -128,7 +143,8 @@ typedef struct
 typedef struct
 {
     uint8_t id;
-    bool exists;
+    bool is_used;
+    bool is_lastused;
     size_t size;
     time_t mtime;
     char preview[RG_PATH_MAX];
@@ -142,23 +158,25 @@ typedef struct
     rg_emu_slot_t *lastused;
     rg_emu_slot_t *latest;
     rg_emu_slot_t slots[];
-} rg_emu_state_t;
+} rg_emu_states_t;
 
 typedef struct
 {
-    const char *name;
-    const char *version;
-    const char *buildDate;
-    const char *buildTime;
-    const char *buildUser;
-    const char *toolchain;
+    char name[32];
+    char version[32];
+    char buildDate[32];
+    char buildUser[32];
+    char buildTool[32];
     const char *configNs;
     const char *bootArgs;
     uint32_t bootFlags;
     uint32_t bootType;
     float speed;
-    int refreshRate;
     int sampleRate;
+    int tickRate;
+    int frameskip;
+    int overclock;
+    int watchdog;
     int logLevel;
     int isLauncher;
     int saveSlot;
@@ -171,12 +189,14 @@ typedef struct
 typedef struct
 {
     float skippedFPS;
+    float partialFPS;
     float fullFPS;
     float totalFPS;
     float busyPercent;
     int64_t busyTime;
     int64_t lastTick;
     int ticks;
+    int uptime;
     int totalMemoryInt;
     int totalMemoryExt;
     int freeMemoryInt;
@@ -192,10 +212,14 @@ void rg_system_panic(const char *context, const char *message) __attribute__((no
 void rg_system_shutdown(void) __attribute__((noreturn));
 void rg_system_sleep(void) __attribute__((noreturn));
 void rg_system_restart(void) __attribute__((noreturn));
+void rg_system_exit(void) __attribute__((noreturn));
 void rg_system_switch_app(const char *part, const char *name, const char *args, uint32_t flags) __attribute__((noreturn));
 bool rg_system_have_app(const char *app);
 void rg_system_set_led(int value);
 int  rg_system_get_led(void);
+void rg_system_set_overclock(int level);
+int rg_system_get_overclock(void);
+float rg_system_get_overclock_ratio(void);
 void rg_system_tick(int busyTime);
 void rg_system_vlog(int level, const char *context, const char *format, va_list va);
 void rg_system_log(int level, const char *context, const char *format, ...) __attribute__((format(printf,3,4)));
@@ -212,15 +236,18 @@ void rg_system_save_time(void);
 
 // Wrappers for the OS' task/thread creation API. It also keeps track of handles for debugging purposes...
 bool rg_task_create(const char *name, void (*taskFunc)(void *data), void *data, size_t stackSize, int priority, int affinity);
-bool rg_task_delete(const char *name);
+// The main difference between rg_task_delay and rg_usleep is that rg_task_delay will yield
+// to other tasks and will not busy wait time smaller than a tick. Meaning rg_usleep
+// is more accurate but rg_task_delay is more multitasking-friendly.
 void rg_task_delay(int ms);
+void rg_task_yield(void);
 
 char *rg_emu_get_path(rg_path_type_t type, const char *arg);
 bool rg_emu_save_state(uint8_t slot);
 bool rg_emu_load_state(uint8_t slot);
 bool rg_emu_reset(bool hard);
 bool rg_emu_screenshot(const char *filename, int width, int height);
-rg_emu_state_t *rg_emu_get_states(const char *romPath, size_t slots);
+rg_emu_states_t *rg_emu_get_states(const char *romPath, size_t slots);
 
 /* Utilities */
 
@@ -240,6 +267,7 @@ rg_emu_state_t *rg_emu_get_states(const char *romPath, size_t slots);
 #define RG_LOGE(x, ...) rg_system_log(RG_LOG_ERROR, RG_LOG_TAG, x, ## __VA_ARGS__)
 #define RG_LOGW(x, ...) rg_system_log(RG_LOG_WARN, RG_LOG_TAG, x, ## __VA_ARGS__)
 #define RG_LOGI(x, ...) rg_system_log(RG_LOG_INFO, RG_LOG_TAG, x, ## __VA_ARGS__)
+#define RG_LOGU(x, ...) rg_system_log(RG_LOG_USER, RG_LOG_TAG, x, ## __VA_ARGS__)
 #define RG_LOGD(x, ...) rg_system_log(RG_LOG_DEBUG, RG_LOG_TAG, x, ## __VA_ARGS__)
 
 void __cyg_profile_func_enter(void *this_fn, void *call_site);

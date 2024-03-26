@@ -4,7 +4,6 @@
 
 #include <rg_system.h>
 #include <string.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -130,8 +129,6 @@ static void music_player(void *arg)
 
     free(buffer);
     free(mp3);
-
-    rg_task_delete(NULL);
 }
 
 void music_init(void)
