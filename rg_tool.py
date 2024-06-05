@@ -172,6 +172,9 @@ def build_image(apps, device_type, img_format="esp32"):
     if img_format == "esp32s3":
         image_data[0x0000:0x0000+len(bootloader_bin)] = bootloader_bin
         image_data[0x8000:0x8000+len(table_bin)] = table_bin
+    elif device_type == "mariunder-one":
+            image_data[0x0000:len(bootloader_bin)] = bootloader_bin
+            image_data[0x8000:0x8000+len(table_bin)] = table_bin
     else:
         image_data[0x1000:0x1000+len(bootloader_bin)] = bootloader_bin
         image_data[0x8000:0x8000+len(table_bin)] = table_bin

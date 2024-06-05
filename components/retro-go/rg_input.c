@@ -12,7 +12,7 @@
 #include <SDL2/SDL.h>
 #endif
 
-#if RG_BATTERY_DRIVER == 1
+#if RG_BATTERY_DRIVER == 1 || RG_GAMEPAD_DRIVER == 10
 #include <esp_adc_cal.h>
 static esp_adc_cal_characteristics_t adc_chars;
 #endif
@@ -276,6 +276,34 @@ void rg_input_init(void)
 #elif RG_GAMEPAD_DRIVER == 6 // SDL2
 
     RG_LOGI("Initializing SDL2 gamepad driver...");
+
+#elif RG_GAMEPAD_DRIVER == 10    // GPIO with ADC for X/Y and Sel/Start/A/B buttons - Mariunder One
+
+    int adc_pad_buttons_raw;
+    int joyX = adc1_get_raw(RG_GPIO_GAMEPAD_X);
+    int joyY = adc1_get_raw(RG_GPIO_GAMEPAD_Y);
+    esp_err_t r = adc2_get_raw(RG_GPIO_GAMEPAD_SEL_START_AB,ADC_WIDTH_12Bit,&adc_pad_buttons_raw);
+
+    if ( r == ESP_OK ) {
+        //printf("PAD button ADC raw data is: %d\n", adc_pad_buttons_raw );
+	if (adc_pad_buttons_raw == 0) state |= RG_KEY_SELECT;
+	if (adc_pad_buttons_raw > 900 && adc_pad_buttons_raw < 1500 ) state |= RG_KEY_START;
+	if (adc_pad_buttons_raw >= 1500 && adc_pad_buttons_raw < 2200 ) state |= RG_KEY_B;
+	if (adc_pad_buttons_raw >= 2300 && adc_pad_buttons_raw < 3600 ) state |= RG_KEY_A;
+    }
+
+    // Non ADC connected buttons
+    for (size_t i = 0; i < keymap_size; ++i)
+    {
+        if (!gpio_get_level(keymap[i].src))
+            state |= keymap[i].key;
+    }
+
+
+   if (joyY > 2048) state |= RG_KEY_UP;
+   else if (joyY > 1024) state |= RG_KEY_DOWN;
+   if (joyX > 2048) state |= RG_KEY_LEFT;
+   else if (joyX > 1024) state |= RG_KEY_RIGHT;
 
 #endif
 
