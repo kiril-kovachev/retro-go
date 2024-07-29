@@ -44,12 +44,12 @@ compatibility!
 # Installation
 
 ### ODROID-GO
-  1. Download `retro-go_1.x_odroid-go.fw` from the release page and copy it to `/odroid/firmware` on your sdcard.
+  1. Download `retro-go_1.x_odroid-go.fw` from the [release page](https://github.com/ducalex/retro-go/releases/) and copy it to `/odroid/firmware` on your sdcard.
   2. Power up the device while holding down B.
   3. Select retro-go in the files list and flash it.
 
 ### MyRetroGameCase G32 (GBC)
-  1. Download `retro-go_1.x_mrgc-g32.fw` from the release page and copy it to `/espgbc/firmware` on your sdcard.
+  1. Download `retro-go_1.x_mrgc-g32.fw` from the [release page](https://github.com/ducalex/retro-go/releases/) and copy it to `/espgbc/firmware` on your sdcard.
   2. Power up the device while holding down MENU (the volume knob).
   3. Select retro-go in the files list and flash it.
 
@@ -65,9 +65,12 @@ This method is intended to be used when .fw support isn't available (when portin
 ## Game covers
 Game covers should be placed in the `romart` folder at the base of your sd card. You can obtain a pre-made pack [here](https://github.com/ducalex/retro-go-covers). Retro-Go is also compatible with the older Go-Play romart pack.
 
-You can add missing cover art by creating a PNG image (160x168, 8bit) named according to the following scheme:
-`/romart/nes/A/ABCDE123.png` where `nes` is the same as the rom folder, and `ABCDE123` is the CRC32 of the game
-(press A -> Properties in the launcher to find it).
+You can add missing cover art by creating a PNG image (160x168, 8bit). Two naming schemes are supported:
+- CRC32-based: `/romart/nes/A/ABCDE123.png` where `nes` is the same as the rom folder, and `ABCDE123` is the CRC32 of the game (press A -> Properties in the launcher to find it), and `A` is the first character of the CRC32
+- Name-based: `/romart/nes/Super Mario.nes.png` (notice the rom extension is included!)
+
+_Note: CRC32-based, which is what is used in the pre-made pack, is much slower than name-based! This type is useful because filenames vary greatly despite having identical CRCs, but if you generate your own art I suggest you use name-based format and delete all CRC-based art from your SD Card to improve responsiveness._
+
 
 ## BIOS files
 Some emulators support loading a BIOS. The files should be placed as follows:
