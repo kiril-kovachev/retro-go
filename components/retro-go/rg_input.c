@@ -20,6 +20,9 @@ static esp_adc_cal_characteristics_t adc_chars;
 #ifdef RG_GAMEPAD_ADC1_MAP
 static rg_keymap_adc1_t keymap_adc1[] = RG_GAMEPAD_ADC1_MAP;
 #endif
+#ifdef RG_GAMEPAD_ADC2_MAP
+static rg_keymap_adc2_t keymap_adc2[] = RG_GAMEPAD_ADC2_MAP;
+#endif
 #ifdef RG_GAMEPAD_GPIO_MAP
 static rg_keymap_gpio_t keymap_gpio[] = RG_GAMEPAD_GPIO_MAP;
 #endif
@@ -84,6 +87,17 @@ bool rg_input_read_gamepad_raw(uint32_t *out)
     {
         const rg_keymap_adc1_t *mapping = &keymap_adc1[i];
         int value = adc1_get_raw(mapping->channel);
+        if (value > mapping->min && value < mapping->max)
+            state |= mapping->key;
+    }
+#endif
+
+#if defined(RG_GAMEPAD_ADC2_MAP)
+    for (size_t i = 0; i < RG_COUNT(keymap_adc2); ++i)
+    {
+        const rg_keymap_adc2_t *mapping = &keymap_adc2[i];
+        int value;
+        esp_err_t r = adc2_get_raw(mapping->channel, ADC_WIDTH_MAX - 1, &value);
         if (value > mapping->min && value < mapping->max)
             state |= mapping->key;
     }
@@ -231,6 +245,17 @@ void rg_input_init(void)
         adc1_config_channel_atten(mapping->channel, mapping->atten);
     }
     UPDATE_GLOBAL_MAP(keymap_adc1);
+#endif
+
+#if defined(RG_GAMEPAD_ADC2_MAP)
+    RG_LOGI("Initializing ADC2 driver...");
+    //adc2_config_width(ADC_WIDTH_MAX - 1);
+    for (size_t i = 0; i < RG_COUNT(keymap_adc2); ++i)
+    {
+        const rg_keymap_adc2_t *mapping = &keymap_adc2[i];
+        adc2_config_channel_atten(mapping->channel, mapping->atten);
+    }
+    UPDATE_GLOBAL_MAP(keymap_adc2);
 #endif
 
 #if defined(RG_GAMEPAD_GPIO_MAP)

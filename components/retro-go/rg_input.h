@@ -34,6 +34,15 @@ typedef struct
     int min, max;
 } rg_keymap_adc1_t;
 
+// #define RG_GAMEPAD_ADC2_MAP {{}, ...} to use ADC2 driver
+typedef struct
+{
+    rg_key_t key;
+    int channel;
+    int atten;
+    int min, max;
+} rg_keymap_adc2_t;
+
 // #define RG_GAMEPAD_GPIO_MAP {{}, ...} to use GPIO driver
 typedef struct
 {
