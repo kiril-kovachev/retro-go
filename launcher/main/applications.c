@@ -128,7 +128,9 @@ static void application_start(retro_file_t *file, int load_state)
     RG_ASSERT_ARG(file);
     char *part = strdup(file->app->partition);
     char *name = strdup(file->app->short_name);
-    char *path = strdup(get_file_path(file));
+    /* For apps that do not require a ROM (extensions string is "  "),
+     * pass NULL as args to switch directly to the app. */
+    char *path = (strcmp(file->app->extensions, "  ") == 0) ? NULL : strdup(get_file_path(file));
     int flags = (gui.startup_mode ? RG_BOOT_ONCE : 0);
     if (load_state != -1)
     {
@@ -677,6 +679,41 @@ static void application(const char *desc, const char *name, const char *exts, co
     app->crc_offset = crc_offset;
 
     gui_add_tab(app->short_name, app->description, app, event_handler);
+
+    /* If this app does not use ROM files (empty extensions), create a
+     * synthetic launcher entry so it is visible and selectable. */
+    // Check if extensions are effectively empty (just spaces)
+    bool has_empty_extensions = true;
+    for (int i = 0; i < strlen(app->extensions); i++) {
+        if (app->extensions[i] != ' ') {
+            has_empty_extensions = false;
+            break;
+        }
+    }
+    
+    if (has_empty_extensions)
+    {
+        if (app->files_count + 1 > app->files_capacity)
+        {
+            size_t new_capacity = (app->files_capacity * 1.5) + 1;
+            retro_file_t *new_buf = realloc(app->files, new_capacity * sizeof(retro_file_t));
+            if (new_buf)
+            {
+                app->files = new_buf;
+                app->files_capacity = new_capacity;
+            }
+        }
+
+        app->files[app->files_count++] = (retro_file_t) {
+            .name = rg_unique_string("Launch"),
+            .folder = rg_unique_string(app->paths.roms),
+            .checksum = 0,
+            .missing_cover = 0,
+            .saves = 0,
+            .type = RETRO_TYPE_FILE,
+            .app = (void*)app,
+        };
+    }
 }
 
 void applications_init(void)
@@ -698,7 +735,7 @@ void applications_init(void)
     // application("Neo Geo Pocket Color", "ngp", "ngp ngc zip", "ngpocket-go", 0);
     application("DOOM", "doom", "wad zip", "prboom-go", 0);
     application("MSX", "msx", "rom mx1 mx2 dsk", "fmsx", 0);
-
+    application("Marauder", "marauder", "", "marauder", 0);
     // Special app to bootstrap native esp32 binaries from the SD card
     // application("Bootstrap", "apps", "bin elf", "bootstrap", 0);
 
